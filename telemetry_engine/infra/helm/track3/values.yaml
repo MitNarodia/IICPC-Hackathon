@@ -1,0 +1,65 @@
+# Default values for the Track 3 Helm chart. Override per-environment with
+# `-f my-values.yaml` or `--set`.
+
+image:
+  # Final image is "<repository>/<service>:<tag>", e.g. track3/scoring-engine:1.0.0
+  repository: track3
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Connection strings injected into every service via a ConfigMap + Secret.
+config:
+  kafkaBrokers: "redpanda:9092"
+  kafkaTLS: "false"
+  redisAddr: "redis:6379"
+  logLevel: "info"
+  windowSize: "5s"
+  slideInterval: "1s"
+  rollingRetention: "120s"
+  flushInterval: "1s"
+
+secrets:
+  postgresDSN: "postgres://track3:track3@postgres:5432/track3?sslmode=disable"
+  redisPassword: ""
+
+# Default pod resources; a service may override with its own `resources`.
+defaultResources:
+  requests: { cpu: "100m", memory: "64Mi" }
+  limits: { cpu: "1", memory: "256Mi" }
+
+# The five backend services. `http: true` adds the 8080 API/WS port + Service.
+services:
+  ingestion-service:
+    replicas: 2
+    http: true
+    httpPort: 8080
+    autoscale: { enabled: true, minReplicas: 2, maxReplicas: 10, targetCPU: 70 }
+  stream-processor:
+    replicas: 2
+    autoscale: { enabled: true, minReplicas: 2, maxReplicas: 12, targetCPU: 70 }
+    resources:
+      requests: { cpu: "200m", memory: "128Mi" }
+      limits: { cpu: "2", memory: "512Mi" }
+  validation-engine:
+    replicas: 1
+    resources:
+      requests: { cpu: "200m", memory: "128Mi" }
+      limits: { cpu: "2", memory: "512Mi" }
+  scoring-engine:
+    replicas: 1
+  leaderboard-service:
+    replicas: 2
+    http: true
+    httpPort: 8080
+    autoscale: { enabled: true, minReplicas: 2, maxReplicas: 8, targetCPU: 75 }
+
+frontend:
+  enabled: true
+  replicas: 2
+  image: track3/frontend:latest
+
+ingress:
+  enabled: true
+  className: nginx
+  dashboardHost: track3.local
+  ingestHost: ingest.track3.local

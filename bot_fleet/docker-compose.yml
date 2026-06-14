@@ -1,0 +1,66 @@
+# Bot Fleet — Docker Compose for local testing
+# Starts the mock exchange, then runs the bot fleet against it.
+#
+#   docker compose up --build
+#
+# Or run specific services:
+#   docker compose up mock_exchange     # start mock only
+#   docker compose run bot_fleet --bots 500 --orders 50   # custom args
+
+name: bot-fleet
+
+services:
+  mock_exchange:
+    build:
+      context: .
+      target: runtime
+    command: ["/usr/local/bin/mock_exchange", "9090"]
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9090' || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  bot_fleet:
+    build:
+      context: .
+      target: runtime
+    depends_on:
+      mock_exchange:
+        condition: service_healthy
+    command:
+      - /usr/local/bin/bot_fleet
+      - --host
+      - mock_exchange
+      - --port
+      - "9090"
+      - --bots
+      - "1000"
+      - --conns
+      - "50"
+      - --orders
+      - "100"
+
+  tests:
+    build:
+      context: .
+      target: runtime
+    entrypoint: ["/usr/local/bin/bot_fleet_tests"]
+    profiles: ["test"]
+
+  benchmark:
+    build:
+      context: .
+      target: runtime
+    depends_on:
+      mock_exchange:
+        condition: service_healthy
+    environment:
+      HOST: mock_exchange
+      PORT: "9090"
+      BIN_DIR: /usr/local/bin
+      ORDERS: "200"
+    entrypoint: ["bash", "/opt/scripts/run_benchmarks.sh"]
+    profiles: ["bench"]

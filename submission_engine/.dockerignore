@@ -1,0 +1,14 @@
+# Track 1 Docker ignore
+.git
+**/.git
+**/node_modules
+**/vendor
+deploy/
+docs/
+test/
+infra/
+api/
+*.md
+*.txt
+.env*
+!.env.example

@@ -1,0 +1,27 @@
+{{- /* HorizontalPodAutoscaler for any service with autoscale.enabled. */ -}}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc.autoscale $svc.autoscale.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+    {{- include "track3.labels" $ | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $name }}
+  minReplicas: {{ $svc.autoscale.minReplicas | default 2 }}
+  maxReplicas: {{ $svc.autoscale.maxReplicas | default 8 }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.autoscale.targetCPU | default 70 }}
+{{- end }}
+{{- end }}

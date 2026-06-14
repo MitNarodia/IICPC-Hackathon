@@ -1,0 +1,12 @@
+{
+  "name": "bot-fleet",
+  "version-string": "0.1.0",
+  "description": "IICPC 2026 - Distributed Load Generator (Bot Fleet)",
+  "builtin-baseline": "9849e070ad4c3383890fb1c80ae0c54325e2484a",
+  "dependencies": [
+    "boost-asio",
+    "boost-beast",
+    "boost-system",
+    "gtest"
+  ]
+}

@@ -1,0 +1,26 @@
+Track 3 deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Services:
+{{- range $name, $svc := .Values.services }}
+  - {{ $name }} ({{ $svc.replicas | default 1 }} replica(s))
+{{- end }}
+{{- if .Values.frontend.enabled }}
+  - frontend ({{ .Values.frontend.replicas | default 2 }} replica(s))
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+
+Dashboard:  http://{{ .Values.ingress.dashboardHost }}/
+Telemetry:  http://{{ .Values.ingress.ingestHost }}/  (Track 1 & Track 2 push here)
+
+Add these hosts to /etc/hosts pointing at your ingress controller's IP.
+{{- else }}
+
+Ingress is disabled. Port-forward to reach the dashboard:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/leaderboard-service 8080:8080
+{{- end }}
+
+IMPORTANT: run the schema migration once before sending traffic:
+  kubectl -n {{ .Release.Namespace }} create configmap track3-migrations \
+      --from-file=backend/migrations/0001_init.up.sql
+  kubectl -n {{ .Release.Namespace }} apply -f infra/k8s/migrate-job.yaml

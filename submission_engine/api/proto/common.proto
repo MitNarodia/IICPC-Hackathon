@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package track1.v1;
+
+option go_package = "github.com/iicpc/track1/submission-engine/api/proto;track1v1";
+
+message Ack {
+  bool ok = 1;
+  string message = 2;
+}

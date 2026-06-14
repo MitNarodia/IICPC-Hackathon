@@ -1,0 +1,189 @@
+openapi: 3.1.0
+info:
+  title: Track 1 Submission API
+  version: 0.1.0
+servers:
+  - url: https://api.track1.example.com
+paths:
+  /healthz:
+    get:
+      responses:
+        "200":
+          description: alive
+  /readyz:
+    get:
+      responses:
+        "200":
+          description: ready
+  /v1/submissions:
+    post:
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubmissionRequest"
+      responses:
+        "201":
+          description: submission created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSubmissionResponse"
+        "400":
+          $ref: "#/components/responses/Problem"
+        "413":
+          $ref: "#/components/responses/Problem"
+  /v1/submissions/{id}:
+    get:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SubmissionID"
+      responses:
+        "200":
+          description: submission status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionStatus"
+        "404":
+          $ref: "#/components/responses/Problem"
+  /v1/submissions/{id}/logs:
+    get:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SubmissionID"
+        - name: stage
+          in: query
+          schema:
+            type: string
+            enum: [build]
+      responses:
+        "200":
+          description: presigned log URL
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logs_url]
+                properties:
+                  logs_url:
+                    type: string
+  /v1/submissions/{id}/health:
+    get:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SubmissionID"
+      responses:
+        "200":
+          description: current health
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [healthy, latency_ms]
+                properties:
+                  healthy:
+                    type: boolean
+                  latency_ms:
+                    type: number
+  /v1/submissions/{id}/teardown:
+    post:
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SubmissionID"
+      responses:
+        "202":
+          description: teardown requested
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    SubmissionID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: RFC 7807 problem detail
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+  schemas:
+    CreateSubmissionRequest:
+      type: object
+      required: [contestant_id, language, submission_type, entrypoint, declared_port]
+      properties:
+        contestant_id:
+          type: string
+          format: uuid
+        language:
+          type: string
+          enum: [cpp, rust, go]
+        submission_type:
+          type: string
+          enum: [source, binary]
+        entrypoint:
+          type: string
+          minLength: 1
+        declared_port:
+          type: integer
+          minimum: 1024
+          maximum: 65535
+        metadata:
+          type: object
+          additionalProperties: true
+    CreateSubmissionResponse:
+      type: object
+      required: [id, upload_url, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        upload_url:
+          type: string
+        status:
+          type: string
+          enum: [CREATED]
+    SubmissionStatus:
+      type: object
+      required: [id, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        endpoint:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string

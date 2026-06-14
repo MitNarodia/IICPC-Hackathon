@@ -1,0 +1,10 @@
+DROP TRIGGER IF EXISTS audit_log_no_delete ON audit_log;
+DROP TRIGGER IF EXISTS audit_log_no_update ON audit_log;
+DROP FUNCTION IF EXISTS reject_audit_log_mutation();
+DROP TABLE IF EXISTS audit_log;
+DROP TABLE IF EXISTS health_samples;
+DROP TABLE IF EXISTS endpoints;
+DROP TABLE IF EXISTS deployments;
+DROP TABLE IF EXISTS scans;
+DROP TABLE IF EXISTS builds;
+DROP TABLE IF EXISTS submissions;

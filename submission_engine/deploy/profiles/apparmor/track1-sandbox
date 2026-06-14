@@ -1,0 +1,22 @@
+#include <tunables/global>
+
+profile track1-sandbox flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network inet stream,
+  network inet6 stream,
+
+  deny network raw,
+  deny capability,
+  deny mount,
+  deny ptrace,
+  deny signal,
+
+  / r,
+  /** r,
+  /tmp/** rw,
+  deny /proc/**/mem rw,
+  deny /proc/sys/** rw,
+  deny /sys/** rwklx,
+  deny /** wl,
+}

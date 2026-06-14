@@ -1,0 +1,161 @@
+openapi: 3.1.0
+info:
+  title: Track 3 Ingestion API
+  version: 1.0.0
+  description: >
+    Telemetry intake for IICPC Track 3. Track 2 (the C++ bot fleet) and Track 1
+    (the sandbox runtime) push events here; the service validates each event at
+    the boundary, stamps ingest time, and produces it to Redpanda. Well-formed
+    events are accepted; malformed ones are dead-lettered, never silently dropped.
+
+    Two ways in: send canonical `Envelope`s to `/v1/events` (batch) or
+    `/v1/ws` (stream), or use the native shims `/v1/track2/bot-metrics` and
+    `/v1/track1/sandbox` which wrap a track's own JSON into an Envelope for you.
+servers:
+  - url: http://localhost:8081
+    description: Local docker-compose
+tags:
+  - name: events
+  - name: shims
+  - name: meta
+
+paths:
+  /v1/events:
+    post:
+      tags: [events]
+      summary: Ingest one or a batch of envelopes
+      operationId: postEvents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/Envelope'
+                - type: array
+                  items: { $ref: '#/components/schemas/Envelope' }
+      responses:
+        '202':
+          description: Accepted; per-item validation may still reject some.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: integer }
+                  rejected: { type: integer }
+        '400': { description: Unparseable body or size limit exceeded. }
+
+  /v1/ws:
+    get:
+      tags: [events]
+      summary: Stream envelopes over WebSocket (protocol upgrade)
+      operationId: wsEvents
+      description: >
+        Upgrades to a WebSocket. The bot fleet sends one JSON `Envelope` per
+        message at high frequency; each is validated, stamped, and produced.
+        Invalid frames are dead-lettered and the stream continues.
+      responses:
+        '101': { description: Switching Protocols (WebSocket). }
+
+  /v1/track2/bot-metrics:
+    post:
+      tags: [shims]
+      summary: Track 2 AggregateView shim
+      operationId: postTrack2BotMetrics
+      description: Accepts Track 2's native window and routes it as a bot_metrics envelope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Track2BotMetricsIn' }
+      responses:
+        '202': { description: Accepted. }
+        '400': { description: Invalid JSON or failed validation. }
+
+  /v1/track1/sandbox:
+    post:
+      tags: [shims]
+      summary: Track 1 sandbox sample shim
+      operationId: postTrack1Sandbox
+      description: Accepts Track 1's native resource/health sample as a sandbox_metrics envelope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Track1SandboxIn' }
+      responses:
+        '202': { description: Accepted. }
+        '400': { description: Invalid JSON or failed validation. }
+
+  /healthz:
+    get:
+      tags: [meta]
+      summary: Liveness probe
+      operationId: ingestHealthz
+      responses: { '200': { description: OK } }
+
+components:
+  schemas:
+    Envelope:
+      type: object
+      required: [run_id, submission_id, type, payload]
+      properties:
+        run_id: { type: string }
+        submission_id: { type: string }
+        seq: { type: integer, format: int64 }
+        emit_ts: { type: integer, format: int64, description: Emitter capture time, unix ns. }
+        ingest_ts: { type: integer, format: int64, description: Stamped by the service; ignore on input. }
+        source: { type: string, example: bot-fleet/shard-3 }
+        type:
+          type: string
+          enum: [order_submitted, order_ack, order_filled, order_cancelled,
+                 connection_opened, connection_closed, bot_metrics, sandbox_metrics]
+        payload:
+          type: object
+          description: One of the payload shapes; structure depends on `type`.
+
+    Track2BotMetricsIn:
+      type: object
+      required: [run_id, submission_id]
+      properties:
+        run_id: { type: string }
+        submission_id: { type: string }
+        source: { type: string, default: bot-fleet }
+        seq: { type: integer, format: int64 }
+        shard_id: { type: integer }
+        transactions: { type: integer, format: int64 }
+        errors: { type: integer, format: int64 }
+        timeouts: { type: integer, format: int64 }
+        seconds: { type: number, format: double }
+        p50_us: { type: integer, format: int64 }
+        p90_us: { type: integer, format: int64 }
+        p99_us: { type: integer, format: int64 }
+        mean_us: { type: number, format: double }
+        hdr_buckets:
+          type: string
+          format: byte
+          description: Optional base64 HDR histogram counts for exact cross-shard merging.
+        window_start_ts: { type: integer, format: int64 }
+        window_end_ts: { type: integer, format: int64 }
+
+    Track1SandboxIn:
+      type: object
+      required: [run_id, submission_id]
+      properties:
+        run_id: { type: string }
+        submission_id: { type: string }
+        source: { type: string, default: sandbox-runner }
+        seq: { type: integer, format: int64 }
+        pod_name: { type: string }
+        namespace: { type: string, example: track1-sandbox }
+        cpu_millicores: { type: number, format: double }
+        cpu_limit_millicores: { type: number, format: double }
+        memory_bytes: { type: integer, format: int64 }
+        memory_limit_bytes: { type: integer, format: int64 }
+        open_fds: { type: integer }
+        active_connections: { type: integer }
+        health: { type: string, enum: [READY, DEGRADED, UNHEALTHY] }
+        oom_killed: { type: boolean }
+        restart_count: { type: integer }
+        sample_ts: { type: integer, format: int64 }

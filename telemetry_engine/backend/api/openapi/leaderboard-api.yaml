@@ -1,0 +1,235 @@
+openapi: 3.1.0
+info:
+  title: Track 3 Leaderboard API
+  version: 1.0.0
+  description: >
+    Public read API for the IICPC Track 3 real-time leaderboard. Browsers call
+    these REST endpoints for snapshots and detail, and open the WebSocket at
+    `/v1/ws/leaderboard` for live ranking pushes. Multiple benchmark runs are
+    served concurrently; every endpoint is scoped by `run`.
+servers:
+  - url: http://localhost:8080
+    description: Local docker-compose
+tags:
+  - name: leaderboard
+  - name: contestant
+  - name: meta
+
+paths:
+  /v1/runs:
+    get:
+      tags: [meta]
+      summary: List active benchmark runs
+      operationId: listRuns
+      responses:
+        '200':
+          description: Runs known to this instance, most-recently-active first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/RunSummary' }
+
+  /v1/leaderboard:
+    get:
+      tags: [leaderboard]
+      summary: Ranked board for a run
+      operationId: getLeaderboard
+      parameters:
+        - { name: run, in: query, required: true, schema: { type: string }, description: Run ID }
+        - name: min_correctness
+          in: query
+          required: false
+          schema: { type: number, format: double, minimum: 0, maximum: 100 }
+          description: Keep only entries whose correctness sub-score ≥ this.
+        - name: health
+          in: query
+          required: false
+          schema: { type: string, enum: [READY, DEGRADED, UNHEALTHY] }
+        - name: search
+          in: query
+          required: false
+          schema: { type: string }
+          description: Case-insensitive substring of display name or submission id.
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1 }
+          description: Return only the top-N after filtering.
+      responses:
+        '200':
+          description: Current ranked, filtered board.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_id: { type: string }
+                  count: { type: integer }
+                  served: { type: string, format: date-time }
+                  entries:
+                    type: array
+                    items: { $ref: '#/components/schemas/LeaderboardEntry' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/contestant:
+    get:
+      tags: [contestant]
+      summary: Deep-dive for one contestant
+      operationId: getContestant
+      parameters:
+        - { name: run, in: query, required: true, schema: { type: string } }
+        - { name: submission, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Live entry plus rolling stats, validation verdict, and window history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContestantDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { description: Unknown (run, submission). }
+
+  /v1/ws/leaderboard:
+    get:
+      tags: [leaderboard]
+      summary: WebSocket live board (protocol upgrade)
+      operationId: wsLeaderboard
+      description: >
+        Upgrades to a WebSocket. On connect the server sends the current board
+        immediately, then pushes a full ranked snapshot whenever any score in
+        the run changes. Each message is a `BoardMessage`. The connection is
+        one-way (server→client); clients send nothing but periodic pongs.
+      parameters:
+        - { name: run, in: query, required: true, schema: { type: string } }
+      responses:
+        '101': { description: Switching Protocols (WebSocket). }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /healthz:
+    get:
+      tags: [meta]
+      summary: Liveness probe
+      operationId: healthz
+      responses: { '200': { description: OK } }
+
+components:
+  responses:
+    BadRequest:
+      description: Missing or invalid query parameter.
+      content:
+        text/plain:
+          schema: { type: string }
+
+  schemas:
+    RunSummary:
+      type: object
+      properties:
+        run_id: { type: string }
+        contestants: { type: integer }
+        last_update: { type: string, format: date-time }
+
+    LeaderboardEntry:
+      type: object
+      description: One denormalized board row, pushed over WS and returned by REST.
+      properties:
+        rank: { type: integer }
+        prev_rank: { type: integer, description: Rank before the latest update (0 = new). }
+        run_id: { type: string }
+        submission_id: { type: string }
+        display_name: { type: string }
+        composite: { type: number, format: double, description: Weighted score, 0–100. }
+        latency_score: { type: number, format: double }
+        throughput_score: { type: number, format: double }
+        correctness_score: { type: number, format: double }
+        stability_score: { type: number, format: double }
+        tps: { type: number, format: double }
+        p50_us: { type: integer }
+        p99_us: { type: integer }
+        error_rate: { type: number, format: double }
+        health: { type: string, enum: [READY, DEGRADED, UNHEALTHY] }
+        updated_at: { type: string, format: date-time }
+
+    BoardMessage:
+      type: object
+      description: WebSocket payload shape.
+      properties:
+        type: { type: string, const: leaderboard }
+        run_id: { type: string }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/LeaderboardEntry' }
+
+    WindowAggregate:
+      type: object
+      properties:
+        run_id: { type: string }
+        submission_id: { type: string }
+        window_start: { type: string, format: date-time }
+        window_end: { type: string, format: date-time }
+        window_kind: { type: string, enum: [tumbling, sliding, rolling] }
+        transactions: { type: integer }
+        errors: { type: integer }
+        timeouts: { type: integer }
+        tps: { type: number, format: double }
+        error_rate: { type: number, format: double }
+        p50_us: { type: integer }
+        p90_us: { type: integer }
+        p99_us: { type: integer }
+        max_us: { type: integer }
+        mean_us: { type: number, format: double }
+        sample_count: { type: integer }
+
+    RollingStats:
+      type: object
+      properties:
+        run_id: { type: string }
+        submission_id: { type: string }
+        updated_at: { type: string, format: date-time }
+        total_transactions: { type: integer }
+        total_errors: { type: integer }
+        peak_tps: { type: number, format: double }
+        current_tps: { type: number, format: double }
+        p50_us: { type: integer }
+        p90_us: { type: integer }
+        p99_us: { type: integer }
+        error_rate: { type: number, format: double }
+        tps_stddev: { type: number, format: double }
+        tps_cov: { type: number, format: double }
+
+    Finding:
+      type: object
+      properties:
+        rule: { type: string }
+        message: { type: string }
+        order_id: { type: integer }
+        at: { type: string, format: date-time }
+
+    ValidationResult:
+      type: object
+      properties:
+        run_id: { type: string }
+        submission_id: { type: string }
+        updated_at: { type: string, format: date-time }
+        orders_checked: { type: integer }
+        trades_checked: { type: integer }
+        violations: { type: integer }
+        violations_by_rule:
+          type: object
+          additionalProperties: { type: integer }
+        correctness_score: { type: number, format: double, description: 0–1. }
+        recent_findings:
+          type: array
+          items: { $ref: '#/components/schemas/Finding' }
+
+    ContestantDetail:
+      type: object
+      properties:
+        entry: { $ref: '#/components/schemas/LeaderboardEntry' }
+        rolling: { $ref: '#/components/schemas/RollingStats' }
+        validation: { $ref: '#/components/schemas/ValidationResult' }
+        history:
+          type: array
+          items: { $ref: '#/components/schemas/WindowAggregate' }

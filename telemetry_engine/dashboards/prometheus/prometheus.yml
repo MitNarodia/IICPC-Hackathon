@@ -1,0 +1,31 @@
+# Prometheus scrape config for the Track 3 stack. Every Go service exposes
+# /metrics on :9100 (METRICS_ADDR). Redpanda exposes its own metrics on :9644.
+# Service names resolve via the docker-compose network DNS.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    stack: track3
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: track3-services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - ingestion-service:9100
+          - stream-processor:9100
+          - validation-engine:9100
+          - scoring-engine:9100
+          - leaderboard-service:9100
+        labels:
+          tier: track3
+
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: ["redpanda:9644"]

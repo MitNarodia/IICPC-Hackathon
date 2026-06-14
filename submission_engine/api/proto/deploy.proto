@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package track1.v1;
+
+option go_package = "github.com/iicpc/track1/submission-engine/api/proto;track1v1";
+
+import "common.proto";
+
+service DeploymentManager {
+  rpc GetDeployment(GetDeploymentRequest) returns (DeploymentStatus);
+  rpc Teardown(TeardownRequest) returns (Ack);
+}
+
+message GetDeploymentRequest {
+  string submission_id = 1;
+}
+
+message TeardownRequest {
+  string submission_id = 1;
+  string reason = 2;
+}
+
+message DeploymentStatus {
+  string submission_id = 1;
+  string status = 2;
+  string pod_name = 3;
+  string namespace = 4;
+  string internal_url = 5;
+}

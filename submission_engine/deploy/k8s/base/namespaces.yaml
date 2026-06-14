@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track1-system
+  labels:
+    track: track1-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track1-data
+  labels:
+    track: track1-data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track1-build
+  labels:
+    track: track1-build
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track1-sandbox
+  labels:
+    track: track1-sandbox
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track1-security
+  labels:
+    track: track1-security
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track1-observability
+  labels:
+    track: track1-observability

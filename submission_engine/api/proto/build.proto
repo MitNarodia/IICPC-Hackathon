@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package track1.v1;
+
+option go_package = "github.com/iicpc/track1/submission-engine/api/proto;track1v1";
+
+service BuildService {
+  rpc GetBuild(GetBuildRequest) returns (BuildStatus);
+}
+
+message GetBuildRequest {
+  string submission_id = 1;
+}
+
+message BuildStatus {
+  string submission_id = 1;
+  string status = 2;
+  string image_ref = 3;
+  string image_digest = 4;
+  string logs_uri = 5;
+  string error = 6;
+}

@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package track1.v1;
+
+option go_package = "github.com/iicpc/track1/submission-engine/api/proto;track1v1";
+
+service HealthMonitor {
+  rpc GetHealth(GetHealthRequest) returns (HealthStatus);
+}
+
+message GetHealthRequest {
+  string submission_id = 1;
+}
+
+message HealthStatus {
+  string submission_id = 1;
+  bool healthy = 2;
+  double latency_ms = 3;
+  int32 samples = 4;
+}

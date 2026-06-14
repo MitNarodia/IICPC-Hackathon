@@ -1,0 +1,22 @@
+# Go
+bin/
+*.log
+
+# Node
+node_modules/
+dist/
+
+# Python
+.venv/
+__pycache__/
+
+# CMake
+build/
+CMakeCache.txt
+CMakeFiles/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store

@@ -1,0 +1,46 @@
+# Ingress for the Track 3 dashboard and the telemetry intake. Uses the nginx
+# ingress controller. WebSocket works through nginx ingress without special
+# annotations, but we raise the read timeout so long-lived leaderboard streams
+# are not cut off.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: track3-dashboard
+  namespace: track3
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: track3.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port: { number: 80 }
+---
+# Separate host for Track 2 / Track 1 to push telemetry directly to ingestion.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: track3-ingest
+  namespace: track3
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "16m"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ingest.track3.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingestion-service
+                port: { number: 8080 }

@@ -1,0 +1,9 @@
+# Keep the Go build context small and deterministic.
+.git
+.gitignore
+*.md
+Dockerfile
+.dockerignore
+# Local build outputs (we build inside the image).
+bin/
+/out/

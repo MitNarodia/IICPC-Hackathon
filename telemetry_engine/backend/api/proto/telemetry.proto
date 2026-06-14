@@ -1,0 +1,167 @@
+// telemetry.proto
+// ================
+// Canonical wire schema for every telemetry event that flows from Track 2
+// (the C++23 bot fleet) and Track 1 (the sandbox runtime) into Track 3.
+//
+// WHY PROTOBUF (and not only JSON):
+//   - Track 2 emits compact JSON today (see market/order.hpp). Track 3 accepts
+//     that JSON at the ingestion edge for zero-friction integration, but RE-
+//     ENCODES every event as Protobuf before putting it on Redpanda. Protobuf
+//     is ~3-5x smaller on the wire, has a stable field-number contract (safe
+//     schema evolution), and decodes far faster in the hot consumer path.
+//   - The field NUMBERS are the contract. Never reuse or renumber a field.
+//
+// All timestamps are UNIX nanoseconds (int64) captured from a monotonic-ish
+// source on the emitter and normalized to wall-clock on ingestion. Latencies
+// are microseconds (matches Track 2's HdrHistogram unit).
+
+syntax = "proto3";
+
+package track3.telemetry.v1;
+
+option go_package = "github.com/iicpc/track3/telemetry-engine/pkg/events/pb;pb";
+
+// ---------------------------------------------------------------------------
+// Envelope — wraps every event. The ingestion service stamps `ingest_ts` and
+// `partition_key`; everything else originates at the emitter.
+// ---------------------------------------------------------------------------
+message Envelope {
+  // Unique benchmark run this event belongs to. One contestant submission can
+  // be benchmarked many times; each press of "Run" creates a new run_id.
+  string run_id = 1;
+  // The contestant's matching-engine submission under test (Track 1 UUIDv7).
+  string submission_id = 2;
+  // Monotonic per-(run,emitter) sequence number. Lets the consumer detect gaps
+  // and reorder within a partition. Track 2 stamps this per shard.
+  uint64 seq = 3;
+  // Emitter-side capture time (unix ns).
+  int64 emit_ts = 4;
+  // Ingestion-side receive time (unix ns). Stamped by ingestion-service.
+  int64 ingest_ts = 5;
+  // Which emitter produced this (e.g. "bot-fleet/shard-3", "sandbox-runner").
+  string source = 6;
+
+  oneof payload {
+    OrderSubmitted   order_submitted   = 10;
+    OrderAck         order_ack         = 11;
+    OrderFilled      order_filled      = 12;
+    OrderCancelled   order_cancelled   = 13;
+    ConnectionOpened connection_opened = 14;
+    ConnectionClosed connection_closed = 15;
+    BotMetrics       bot_metrics       = 16;
+    SandboxMetrics   sandbox_metrics   = 17;
+  }
+}
+
+enum Side {
+  SIDE_UNSPECIFIED = 0;
+  SIDE_BUY = 1;
+  SIDE_SELL = 2;
+}
+
+enum OrderKind {
+  ORDER_KIND_UNSPECIFIED = 0;
+  ORDER_KIND_LIMIT = 1;
+  ORDER_KIND_MARKET = 2;
+  ORDER_KIND_CANCEL = 3;
+}
+
+// A bot pushed an order onto the wire (just before socket write in Track 2).
+message OrderSubmitted {
+  uint64 bot_id = 1;
+  uint64 order_id = 2;     // unique per (bot_id)
+  Side side = 3;
+  OrderKind kind = 4;
+  double price = 5;        // ignored for MARKET/CANCEL
+  uint32 quantity = 6;
+  int64 send_ts = 7;       // unix ns; basis of latency measurement
+  uint64 target_order_id = 8; // for CANCEL: which resting order to cancel
+}
+
+// The contestant engine acknowledged the order (accepted into the book or
+// rejected). This is the event that closes the latency loop.
+message OrderAck {
+  uint64 bot_id = 1;
+  uint64 order_id = 2;
+  bool accepted = 3;       // false => rejected
+  string reject_reason = 4;
+  int64 recv_ts = 5;       // unix ns; latency = recv_ts - send_ts
+  int64 ack_latency_us = 6; // emitter-computed round trip (microseconds)
+}
+
+// A (partial or full) fill was reported by the contestant engine.
+message OrderFilled {
+  uint64 bot_id = 1;
+  uint64 order_id = 2;     // the aggressor order
+  uint64 maker_order_id = 3; // the resting order that was hit
+  double fill_price = 4;
+  uint32 fill_quantity = 5;
+  uint32 remaining_quantity = 6; // remaining on the aggressor after this fill
+  uint64 trade_id = 7;     // exchange-assigned trade identifier
+  int64 recv_ts = 8;
+}
+
+// A resting order was cancelled (by the bot or by the engine).
+message OrderCancelled {
+  uint64 bot_id = 1;
+  uint64 order_id = 2;
+  uint32 cancelled_quantity = 3;
+  string reason = 4;       // "user" | "ioc" | "expired" | ...
+  int64 recv_ts = 5;
+}
+
+// A WebSocket session between a bot and the contestant engine was established.
+message ConnectionOpened {
+  uint64 connection_id = 1;
+  uint64 bot_id = 2;
+  string remote_addr = 3;
+  int64 opened_ts = 4;
+  int64 handshake_us = 5;  // WS upgrade latency
+}
+
+// A WebSocket session closed (graceful or error).
+message ConnectionClosed {
+  uint64 connection_id = 1;
+  uint64 bot_id = 2;
+  string close_reason = 3; // "graceful" | "eof" | "reset" | "timeout" | code
+  int64 closed_ts = 4;
+  uint64 bytes_sent = 5;
+  uint64 bytes_recv = 6;
+}
+
+// Windowed, pre-aggregated metrics from ONE bot-fleet shard. This is the
+// direct serialization of Track 2's MetricsAggregator::AggregateView. Track 3
+// can either re-derive everything from raw order events OR fast-path on these.
+message BotMetrics {
+  uint32 shard_id = 1;
+  uint64 transactions = 2;
+  uint64 errors = 3;
+  uint64 timeouts = 4;
+  double window_seconds = 5;
+  int64 p50_us = 6;
+  int64 p90_us = 7;
+  int64 p99_us = 8;
+  double mean_us = 9;
+  // Optional: raw HDR histogram buckets, base64 in JSON, for exact re-merge.
+  bytes hdr_buckets = 10;
+  int64 window_start_ts = 11;
+  int64 window_end_ts = 12;
+}
+
+// Resource/health sample for the contestant's sandbox Pod, emitted by Track 1
+// (deployment-manager / health-monitor). Lets Track 3 attribute saturation and
+// penalize submissions that fall over under load.
+message SandboxMetrics {
+  string pod_name = 1;
+  string namespace = 2;
+  double cpu_millicores = 3;   // current CPU usage
+  double cpu_limit_millicores = 4;
+  uint64 memory_bytes = 5;
+  uint64 memory_limit_bytes = 6;
+  uint32 open_fds = 7;
+  uint32 active_connections = 8;
+  string health = 9;           // "READY" | "DEGRADED" | "UNHEALTHY"
+  bool oom_killed = 10;
+  uint32 restart_count = 11;
+  int64 sample_ts = 12;
+}

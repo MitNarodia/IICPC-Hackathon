@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package track1.v1;
+
+option go_package = "github.com/iicpc/track1/submission-engine/api/proto;track1v1";
+
+import "common.proto";
+
+service UploadService {
+  rpc CompleteUpload(CompleteUploadRequest) returns (Ack);
+}
+
+message CompleteUploadRequest {
+  string submission_id = 1;
+}

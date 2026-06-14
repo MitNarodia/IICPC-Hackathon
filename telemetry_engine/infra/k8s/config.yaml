@@ -1,0 +1,30 @@
+# Shared configuration for the Track 3 services. Non-secret connection strings
+# go in the ConfigMap; credentials go in the Secret. In a real cluster the
+# Secret would be sealed/external-secrets managed — the literal values here are
+# dev defaults so the manifests apply standalone.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: track3-config
+  namespace: track3
+data:
+  KAFKA_BROKERS: "redpanda:9092"
+  REDIS_ADDR: "redis:6379"
+  METRICS_ADDR: ":9100"
+  HTTP_ADDR: ":8080"
+  LOG_LEVEL: "info"
+  WINDOW_SIZE: "5s"
+  SLIDE_INTERVAL: "1s"
+  ROLLING_RETENTION: "120s"
+  FLUSH_INTERVAL: "1s"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: track3-secrets
+  namespace: track3
+type: Opaque
+stringData:
+  # Full DSN keeps pgx happy and lets us rotate creds in one place.
+  POSTGRES_DSN: "postgres://track3:track3@postgres:5432/track3?sslmode=disable"
+  REDIS_PASSWORD: ""

@@ -1,0 +1,250 @@
+# Track 3 application workloads: the five Go services plus the dashboard. Every
+# pod scrapes on :9100 (/metrics, /healthz). Stateless consumers (processor,
+# validation, scoring) can scale horizontally within their consumer group;
+# leaderboard replicas each take a UNIQUE group (derived from the pod hostname)
+# so every replica serves the full board over WebSocket.
+# ---------------------------------------------------------------------------
+# ingestion-service (telemetry intake: HTTP + WS)
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-service
+  namespace: track3
+  labels: { app: ingestion-service }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: ingestion-service } }
+  template:
+    metadata:
+      labels: { app: ingestion-service }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      containers:
+        - name: ingestion-service
+          image: track3/ingestion-service:latest
+          envFrom:
+            - configMapRef: { name: track3-config }
+            - secretRef: { name: track3-secrets }
+          ports:
+            - { containerPort: 8080, name: http }
+            - { containerPort: 9100, name: metrics }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "100m", memory: "64Mi" }
+            limits: { cpu: "1", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion-service
+  namespace: track3
+spec:
+  selector: { app: ingestion-service }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+    - { name: metrics, port: 9100, targetPort: 9100 }
+---
+# ---------------------------------------------------------------------------
+# stream-processor
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-processor
+  namespace: track3
+  labels: { app: stream-processor }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: stream-processor } }
+  template:
+    metadata:
+      labels: { app: stream-processor }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      containers:
+        - name: stream-processor
+          image: track3/stream-processor:latest
+          envFrom:
+            - configMapRef: { name: track3-config }
+            - secretRef: { name: track3-secrets }
+          ports:
+            - { containerPort: 9100, name: metrics }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "200m", memory: "128Mi" }
+            limits: { cpu: "2", memory: "512Mi" }
+---
+# ---------------------------------------------------------------------------
+# validation-engine
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: validation-engine
+  namespace: track3
+  labels: { app: validation-engine }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: validation-engine } }
+  template:
+    metadata:
+      labels: { app: validation-engine }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      containers:
+        - name: validation-engine
+          image: track3/validation-engine:latest
+          envFrom:
+            - configMapRef: { name: track3-config }
+            - secretRef: { name: track3-secrets }
+          ports:
+            - { containerPort: 9100, name: metrics }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "200m", memory: "128Mi" }
+            limits: { cpu: "2", memory: "512Mi" }
+---
+# ---------------------------------------------------------------------------
+# scoring-engine
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scoring-engine
+  namespace: track3
+  labels: { app: scoring-engine }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: scoring-engine } }
+  template:
+    metadata:
+      labels: { app: scoring-engine }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      containers:
+        - name: scoring-engine
+          image: track3/scoring-engine:latest
+          envFrom:
+            - configMapRef: { name: track3-config }
+            - secretRef: { name: track3-secrets }
+          ports:
+            - { containerPort: 9100, name: metrics }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "64Mi" }
+            limits: { cpu: "1", memory: "256Mi" }
+---
+# ---------------------------------------------------------------------------
+# leaderboard-service (REST + WebSocket fan-out)
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leaderboard-service
+  namespace: track3
+  labels: { app: leaderboard-service }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: leaderboard-service } }
+  template:
+    metadata:
+      labels: { app: leaderboard-service }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      containers:
+        - name: leaderboard-service
+          image: track3/leaderboard-service:latest
+          envFrom:
+            - configMapRef: { name: track3-config }
+            - secretRef: { name: track3-secrets }
+          ports:
+            - { containerPort: 8080, name: http }
+            - { containerPort: 9100, name: metrics }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: 9100 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests: { cpu: "100m", memory: "64Mi" }
+            limits: { cpu: "1", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: leaderboard-service
+  namespace: track3
+spec:
+  selector: { app: leaderboard-service }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+    - { name: metrics, port: 9100, targetPort: 9100 }
+---
+# ---------------------------------------------------------------------------
+# frontend (nginx serving the SPA + proxying /v1 to leaderboard-service)
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: track3
+  labels: { app: frontend }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata:
+      labels: { app: frontend }
+    spec:
+      containers:
+        - name: frontend
+          image: track3/frontend:latest
+          ports:
+            - { containerPort: 80, name: http }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 80 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "50m", memory: "32Mi" }
+            limits: { cpu: "500m", memory: "128Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: track3
+spec:
+  selector: { app: frontend }
+  ports:
+    - { name: http, port: 80, targetPort: 80 }

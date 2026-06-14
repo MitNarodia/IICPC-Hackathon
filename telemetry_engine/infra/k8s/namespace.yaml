@@ -1,0 +1,8 @@
+# Namespace for all Track 3 components. Track 1's sandbox lives in its own
+# namespace (track1-sandbox); Track 3 only consumes its telemetry over the bus.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: track3
+  labels:
+    app.kubernetes.io/part-of: track3
