@@ -73,6 +73,7 @@ func main() {
 		log.Printf("build-service: processing %s for %s", env.Type, env.SubmissionID)
 
 		// Transition UPLOADED → VALIDATING → VALIDATED → BUILDING.
+		// ye dono faltu hai !!
 		_, _ = pg.TransitionSubmission(ctx, env.SubmissionID, statemachine.EventValidationStarted, "build-service", nil)
 		_, _ = pg.TransitionSubmission(ctx, env.SubmissionID, statemachine.EventValidationPassed, "build-service", nil)
 		sub, err := pg.TransitionSubmission(ctx, env.SubmissionID, statemachine.EventBuildStarted, "build-service", nil)
@@ -222,7 +223,7 @@ func createBuildContext(artifactPath string, subType models.SubmissionType) (str
 		}
 		return out.Name(), nil
 	}
-
+    // kya hum isko skip kar skte hai ? !!
 	// Source: copy all files from tar.gz into the new tar
 	gz, err := gzip.NewReader(in)
 	if err != nil {

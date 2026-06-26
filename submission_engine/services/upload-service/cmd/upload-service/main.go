@@ -96,7 +96,7 @@ func main() {
 		result, err := uploadsvc.ValidateArtifact(localPath, uploadsvc.ArtifactMetadata{
 			Language:       sub.Language,
 			SubmissionType: sub.Type,
-		}, uploadsvc.Limits{
+		}, uploadsvc.Limits{             // kuch to gadbad hai !!
 			MaxUploadBytes:       cfg.MaxUploadBytes,
 			MaxDecompressedBytes: cfg.MaxDecompressedBytes,
 			MaxFiles:             cfg.MaxFiles,

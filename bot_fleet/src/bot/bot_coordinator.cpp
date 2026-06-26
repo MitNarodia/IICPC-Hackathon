@@ -138,8 +138,14 @@ void BotCoordinator::execute() {
         aggregator_->submit(w->metrics->snapshot_and_reset());
     }
 
+    // Cross-track: report the final partial window to Track 3 ingestion
+    reporter_->report(aggregator_->window());
+    aggregator_->flush();
+
     std::cout << "\n[Coordinator] All bots completed.\n";
     aggregator_->final_report();
+    std::cout << "[Coordinator] Telemetry sent: " << reporter_->reports_sent() 
+              << ", failed: " << reporter_->reports_failed() << "\n";
     std::cout << "[Coordinator] Run finished.\n";
 }
 
